@@ -15,6 +15,9 @@ public final class BreakScheduler {
         case snoozed(until: Date)
         /// Reminders are off. `byUser` distinguishes a menu pause from sleep/lock.
         case paused(byUser: Bool)
+        /// The clock is outside the user's schedule. `until` is the next
+        /// opening, or nil when no day is active.
+        case offSchedule(until: Date?)
     }
 
     public enum Event: Equatable, Sendable {
@@ -32,14 +35,23 @@ public final class BreakScheduler {
 
     public let config: Config
     public private(set) var state: State = .stopped
+    public private(set) var schedule: Schedule
     public var onEvent: (@MainActor (Event) -> Void)?
 
     private let clock: Timekeeper
+    private let calendar: Calendar
     private var pending: ScheduledTask?
 
-    public init(config: Config = .standard, clock: Timekeeper) {
+    public init(
+        config: Config = .standard,
+        schedule: Schedule = .standard,
+        clock: Timekeeper,
+        calendar: Calendar = .current
+    ) {
         self.config = config
+        self.schedule = schedule
         self.clock = clock
+        self.calendar = calendar
     }
 
     // MARK: - Commands
@@ -69,8 +81,22 @@ public final class BreakScheduler {
         emit(.breakDismissed)
         let duration = config.snoozeInterval
         state = .snoozed(until: clock.now().addingTimeInterval(duration))
-        pending = clock.schedule(after: duration) { [weak self] in self?.beginBreak() }
+        pending = clock.schedule(after: duration) { [weak self] in self?.fireScheduledBreak() }
         emit(.scheduleChanged)
+    }
+
+    /// Adopt an edited schedule and re-evaluate the current wait. An in-progress
+    /// break is left alone; the new schedule takes effect when it closes.
+    public func apply(schedule: Schedule) {
+        self.schedule = schedule
+        switch state {
+        case .stopped, .paused, .breaking:
+            break
+        case .idle, .offSchedule:
+            armWork()
+        case .snoozed:
+            if !schedule.allows(clock.now(), calendar: calendar) { enterOffSchedule() }
+        }
     }
 
     /// User turned reminders off from the menu.
@@ -102,9 +128,23 @@ public final class BreakScheduler {
 
     private func armWork() {
         cancelPending()
+        guard schedule.allows(clock.now(), calendar: calendar) else {
+            enterOffSchedule()
+            return
+        }
         state = .idle(fireAt: clock.now().addingTimeInterval(config.workInterval))
-        pending = clock.schedule(after: config.workInterval) { [weak self] in self?.beginBreak() }
+        pending = clock.schedule(after: config.workInterval) { [weak self] in self?.fireScheduledBreak() }
         emit(.scheduleChanged)
+    }
+
+    /// A timer-driven break. The window can close mid-interval, so the
+    /// schedule is checked again on arrival. `breakNow()` bypasses this.
+    private func fireScheduledBreak() {
+        guard schedule.allows(clock.now(), calendar: calendar) else {
+            enterOffSchedule()
+            return
+        }
+        beginBreak()
     }
 
     private func beginBreak() {
@@ -131,6 +171,19 @@ public final class BreakScheduler {
             emit(.countdownTicked(remaining: next))
             scheduleTick()
         }
+    }
+
+    /// Hold until the schedule opens again. Re-arms itself at that moment.
+    private func enterOffSchedule() {
+        cancelPending()
+        if case .breaking = state { emit(.breakDismissed) }
+        let now = clock.now()
+        let opensAt = schedule.nextOpening(after: now, calendar: calendar)
+        state = .offSchedule(until: opensAt)
+        if let opensAt {
+            pending = clock.schedule(after: opensAt.timeIntervalSince(now)) { [weak self] in self?.armWork() }
+        }
+        emit(.scheduleChanged)
     }
 
     private func enterPause(byUser: Bool) {

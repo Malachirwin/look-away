@@ -15,17 +15,24 @@ final class AppModel {
     private(set) var launchAtLoginEnabled = false
     private(set) var launchAtLoginError: String?
 
+    /// Mirrors the scheduler's schedule so SwiftUI sees edits immediately.
+    private(set) var schedule: Schedule
+
     let config: Config
     private let scheduler: BreakScheduler
     private let clock: Timekeeper
+    private let scheduleStore: ScheduleStoring
     private var panel: BreakPanelController?
     private var doneHide: ScheduledTask?
 
-    init(config: Config = .standard) {
+    init(config: Config = .standard, scheduleStore: ScheduleStoring = UserDefaultsScheduleStore()) {
         self.config = config
+        self.scheduleStore = scheduleStore
         let clock = SystemTimekeeper()
         self.clock = clock
-        scheduler = BreakScheduler(config: config, clock: clock)
+        let schedule = scheduleStore.load()
+        self.schedule = schedule
+        scheduler = BreakScheduler(config: config, schedule: schedule, clock: clock)
         scheduler.onEvent = { [unowned self] event in self.handle(event) }
     }
 
@@ -41,6 +48,15 @@ final class AppModel {
     func togglePause() { isPaused ? scheduler.resume() : scheduler.pause() }
     func systemDidSuspend() { scheduler.systemDidSuspend() }
     func systemDidResume() { scheduler.systemDidResume() }
+
+    /// Single write path for schedule edits: persist, apply, refresh display.
+    func updateSchedule(_ schedule: Schedule) {
+        guard schedule != self.schedule else { return }
+        self.schedule = schedule
+        scheduleStore.save(schedule)
+        scheduler.apply(schedule: schedule)
+        refreshIcon()
+    }
 
     func setLaunchAtLogin(_ enabled: Bool) {
         do {
@@ -117,6 +133,9 @@ final class AppModel {
             return "Delayed — back in \(Self.format(until.timeIntervalSince(clock.now())))"
         case .paused(let byUser):
             return byUser ? "Paused" : "Paused (screen locked)"
+        case .offSchedule(let until):
+            guard let until else { return "Outside schedule" }
+            return "Outside schedule — back \(Self.formatOpening(until))"
         }
     }
 
@@ -125,9 +144,18 @@ final class AppModel {
         switch scheduler.state {
         case .breaking: icon = "eye.slash"
         case .paused: icon = "pause.circle"
+        case .offSchedule: icon = "moon.zzz"
         case .stopped, .idle, .snoozed: icon = "eye"
         }
         if icon != iconName { iconName = icon }
+    }
+
+    /// "at 9:00 AM" for later today, "Mon at 9:00 AM" beyond that.
+    private static func formatOpening(_ date: Date) -> String {
+        let style = Date.FormatStyle(date: .omitted, time: .shortened)
+        let time = date.formatted(style)
+        if Calendar.current.isDateInToday(date) { return "at \(time)" }
+        return "\(date.formatted(.dateTime.weekday(.abbreviated))) at \(time)"
     }
 
     private static func format(_ interval: TimeInterval) -> String {
