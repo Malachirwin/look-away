@@ -1,0 +1,302 @@
+import SwiftUI
+import LookAwayCore
+
+/// Schedule editor. Everything below the opt-in toggle stays hidden until the
+/// user turns the schedule on, and per-day hours stay hidden until they ask
+/// for them, so the common 9-to-5 case is two controls and nothing else.
+struct SettingsView: View {
+    let model: AppModel
+    @State private var isCustomizingDays = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+
+            if schedule.isEnabled {
+                Divider().padding(.vertical, 16)
+                daysSection
+                hoursSection.padding(.top, 20)
+                customizeSection.padding(.top, 16)
+            }
+
+            Spacer(minLength: 0)
+            Text(schedule.summary)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.top, 18)
+        }
+        .padding(24)
+        .frame(width: 420, alignment: .leading)
+        .animation(.snappy(duration: 0.2), value: schedule.isEnabled)
+        .animation(.snappy(duration: 0.2), value: isCustomizingDays)
+        .animation(.snappy(duration: 0.2), value: schedule.activeDays)
+    }
+
+    // MARK: Sections
+
+    private var header: some View {
+        Toggle(isOn: binding(\.isEnabled)) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Only remind me on a schedule").font(.headline)
+                Text("Off means reminders run any time you're at the computer.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .toggleStyle(.switch)
+    }
+
+    private var daysSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel("Days")
+            HStack(spacing: 8) {
+                ForEach(Weekday.week, id: \.self) { day in
+                    DayToggle(
+                        day: day,
+                        isActive: schedule.isActive(day),
+                        hasCustomHours: schedule.hasOverride(day),
+                        toggle: { edit { $0.toggleActive(day) } },
+                        customize: { customize(day) },
+                        useDefaultHours: { edit { $0.removeOverride(for: day) } }
+                    )
+                }
+            }
+        }
+    }
+
+    private var hoursSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(schedule.overrides.isEmpty ? "Hours" : "Default hours")
+            HStack(spacing: 8) {
+                TimeField(time: binding(\.hours.start))
+                Text("to").foregroundStyle(.secondary)
+                TimeField(time: binding(\.hours.end))
+            }
+            .disabled(schedule.activeDays.isEmpty)
+        }
+    }
+
+    /// The unobtrusive way in: one quiet disclosure row, and the per-day
+    /// pickers only exist once it is open.
+    @ViewBuilder private var customizeSection: some View {
+        if !schedule.activeDays.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    isCustomizingDays.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.bold))
+                            .rotationEffect(.degrees(isCustomizingDays ? 90 : 0))
+                        Text("Different hours on some days")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+
+                if isCustomizingDays {
+                    VStack(spacing: 6) {
+                        ForEach(activeDays, id: \.self) { day in
+                            DayHoursRow(
+                                day: day,
+                                override: overrideBinding(day),
+                                defaultHours: schedule.hours,
+                                customize: { edit { $0.addOverride(for: day) } },
+                                useDefaultHours: { edit { $0.removeOverride(for: day) } }
+                            )
+                        }
+                    }
+                    .padding(.leading, 2)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+        }
+    }
+
+    // MARK: Editing
+
+    private var schedule: Schedule { model.schedule }
+
+    private var activeDays: [Weekday] { Weekday.week.filter(schedule.isActive) }
+
+    /// Every edit funnels through the model so it is persisted and applied.
+    private func edit(_ change: (inout Schedule) -> Void) {
+        var updated = schedule
+        change(&updated)
+        model.updateSchedule(updated)
+    }
+
+    private func binding<Value>(_ keyPath: WritableKeyPath<Schedule, Value>) -> Binding<Value> {
+        Binding(get: { schedule[keyPath: keyPath] }, set: { value in edit { $0[keyPath: keyPath] = value } })
+    }
+
+    private func overrideBinding(_ day: Weekday) -> Binding<TimeWindow?> {
+        Binding(
+            get: { schedule.overrides[day] },
+            set: { window in
+                edit { schedule in
+                    if let window {
+                        schedule.setOverride(window, for: day)
+                    } else {
+                        schedule.removeOverride(for: day)
+                    }
+                }
+            }
+        )
+    }
+
+    /// Reveals the per-day list so a day customized from its circle is visible.
+    private func customize(_ day: Weekday) {
+        edit { $0.addOverride(for: day) }
+        isCustomizingDays = true
+    }
+}
+
+// MARK: - Pieces
+
+/// One letter in the S M T W T F S row. Click toggles the day; the dot marks a
+/// day that has its own hours.
+private struct DayToggle: View {
+    let day: Weekday
+    let isActive: Bool
+    let hasCustomHours: Bool
+    let toggle: () -> Void
+    let customize: () -> Void
+    let useDefaultHours: () -> Void
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Button(action: toggle) {
+                Text(day.initial)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .frame(width: 32, height: 32)
+                    .background(
+                        Circle().fill(isActive ? Color.accentColor : Color.primary.opacity(0.08))
+                    )
+                    .foregroundStyle(isActive ? Color.white : Color.secondary)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help(isActive ? "\(day.name) is scheduled" : "\(day.name) is off")
+            .accessibilityLabel(day.name)
+            .accessibilityValue(isActive ? "scheduled" : "off")
+
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 4, height: 4)
+                .opacity(hasCustomHours ? 1 : 0)
+        }
+        .contextMenu {
+            if isActive {
+                if hasCustomHours {
+                    Button("Use Default Hours", action: useDefaultHours)
+                } else {
+                    Button("Custom Hours…", action: customize)
+                }
+            }
+        }
+    }
+}
+
+/// A single day inside the customization list: either "same as default" with a
+/// way in, or its own pair of time fields with a way back out.
+private struct DayHoursRow: View {
+    let day: Weekday
+    @Binding var override: TimeWindow?
+    let defaultHours: TimeWindow
+    let customize: () -> Void
+    let useDefaultHours: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(day.name)
+                .font(.subheadline)
+                .frame(width: 82, alignment: .leading)
+
+            if let window = override {
+                TimeField(time: windowBinding(window).start)
+                Text("to").font(.subheadline).foregroundStyle(.secondary)
+                TimeField(time: windowBinding(window).end)
+                Spacer(minLength: 0)
+                Button("Reset", action: useDefaultHours)
+                    .buttonStyle(.link)
+                    .font(.subheadline)
+            } else {
+                Text(defaultHours.formatted)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button("Customize", action: customize)
+                    .buttonStyle(.link)
+                    .font(.subheadline)
+            }
+        }
+    }
+
+    private func windowBinding(_ window: TimeWindow) -> (start: Binding<TimeOfDay>, end: Binding<TimeOfDay>) {
+        (
+            Binding(get: { window.start }, set: { override = TimeWindow(start: $0, end: window.end) }),
+            Binding(get: { window.end }, set: { override = TimeWindow(start: window.start, end: $0) })
+        )
+    }
+}
+
+/// Hour/minute stepper field over a `TimeOfDay`.
+private struct TimeField: View {
+    @Binding var time: TimeOfDay
+
+    var body: some View {
+        DatePicker("", selection: dateBinding, displayedComponents: .hourAndMinute)
+            .datePickerStyle(.stepperField)
+            .labelsHidden()
+            .fixedSize()
+    }
+
+    /// `DatePicker` needs a `Date`; the day it sits on is irrelevant.
+    private var dateBinding: Binding<Date> {
+        let calendar = Calendar.current
+        let today = Date()
+        return Binding(
+            get: { time.date(on: today, calendar: calendar) },
+            set: { date in
+                if let parsed = TimeOfDay(date: date, calendar: calendar) { time = parsed }
+            }
+        )
+    }
+}
+
+private struct SectionLabel: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+}
+
+// MARK: - Presentation
+
+private extension TimeWindow {
+    var formatted: String { "\(start.formatted) – \(end.formatted)" }
+}
+
+private extension TimeOfDay {
+    var formatted: String {
+        date(on: Date(), calendar: .current).formatted(date: .omitted, time: .shortened)
+    }
+}
+
+private extension Schedule {
+    /// One plain-language line describing what is actually going to happen.
+    var summary: String {
+        guard isEnabled else { return "Reminders run all day, every day." }
+        let days = Weekday.week.filter(isActive)
+        guard !days.isEmpty else { return "No days selected — reminders are off." }
+        let names = days.map { String($0.name.prefix(3)) }.formatted(.list(type: .and))
+        guard overrides.isEmpty else { return "Reminders run on \(names), with custom hours on some days." }
+        return "Reminders run on \(names), \(hours.formatted)."
+    }
+}
