@@ -6,9 +6,11 @@ import SwiftUI
 /// schedule section above it, so the panel reads as one thing.
 struct MeetingSettingsView: View {
     let model: AppModel
+    /// Owned by `SettingsView`, which needs to be able to clear it when a
+    /// click lands anywhere else in the panel.
+    @FocusState.Binding var isSearching: Bool
 
     @State private var query = ""
-    @FocusState private var isSearching: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -24,6 +26,11 @@ struct MeetingSettingsView: View {
         .animation(.snappy(duration: 0.2), value: settings.isEnabled)
         .animation(.snappy(duration: 0.2), value: settings.apps)
         .onAppear { model.prepareMeetingSettings() }
+        // Leaving the field puts it back to its placeholder, so clicking in
+        // again never opens onto a stale search.
+        .onChange(of: isSearching) { _, isFocused in
+            if !isFocused { query = "" }
+        }
     }
 
     // MARK: Sections
@@ -47,7 +54,7 @@ struct MeetingSettingsView: View {
             AppTokenField(
                 apps: settings.apps,
                 query: $query,
-                isSearching: _isSearching,
+                isSearching: $isSearching,
                 results: results,
                 add: { app in
                     edit { $0.add(app) }
@@ -147,7 +154,7 @@ struct MeetingSettingsView: View {
 private struct AppTokenField: View {
     let apps: [MeetingApp]
     @Binding var query: String
-    @FocusState var isSearching: Bool
+    @FocusState.Binding var isSearching: Bool
     let results: [InstalledApp]
     let add: (MeetingApp) -> Void
     let remove: (String) -> Void
