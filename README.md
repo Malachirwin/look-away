@@ -23,7 +23,7 @@ time, look at something 20 feet away for 20 seconds.
 - The next 20-minute interval starts when the panel closes (finished or
   declined), never from a snooze.
 - Sleep or screen lock pauses everything; wake or unlock starts a fresh
-  20 minutes.
+  20 minutes. Meetings hold reminders the same way, if you switch that on.
 - Menu: live "Next break in m:ss", Pause / Resume Reminders, Take a Break Now,
   Settings, Launch at Login, Quit.
 
@@ -51,6 +51,42 @@ reminders run around the clock, exactly as before.
   "Outside schedule — back Mon at 9:00 AM". **Take a Break Now** still works.
 
 The schedule is saved to preferences and applied the moment it is edited.
+
+## Meetings
+
+The same panel can hold reminders while you're on a call. Also opt-in: leave
+**Pause reminders during meetings** off and nothing is watched at all.
+
+- **Apps that count as a meeting** is a list of chips over a search field. Type
+  to search every app installed on the Mac and click one to add it; click the
+  × on a chip to drop it. The first time the panel opens, the meeting apps you
+  actually have installed — Zoom, Teams, Slack, Pop, Discord, FaceTime, Webex
+  and the browsers — are filled in for you. Clear the list and it stays clear.
+- Detection watches **real device use, not which app is in front**: macOS is
+  asked which processes are holding an input stream, so a Zoom window sitting
+  in the background during a call still counts, and Zoom merely being open does
+  not. Neither query records anything, so neither one asks for microphone or
+  camera permission.
+- **Count camera use too** covers sitting muted but on video. The system only
+  reports camera use per device rather than per process, so it counts only
+  while one of your chosen apps is also open — Photo Booth on its own is not a
+  meeting.
+- **Detection delay** is how long the microphone has to stay busy before it
+  counts, so a notification chime or a quick "can you hear me?" doesn't hold
+  anything. Once a meeting is on, a 30-second grace period keeps a spell on
+  mute — or the gap between two back-to-back calls — from letting a popup
+  through.
+- While a meeting is on, the menu bar shows a video camera and the menu reads
+  "Paused — Zoom meeting". A meeting starting mid-break closes the popup, and
+  the next reminder is a full 20 minutes after the call ends. **Take a Break
+  Now** still works, and pausing from the menu still outranks detection.
+
+Capture processes don't always share their app's bundle ID — Zoom captures from
+`us.zoom.caphost` alongside `us.zoom.xos`, and Electron apps capture from a
+nested helper — so each app carries the ID patterns that belong to it.
+Chromium browsers are matched through their helper; Safari hands capture to a
+shared WebKit process that doesn't say which browser it came from, so that one
+entry covers any WebKit browser.
 
 ## Install
 
@@ -107,8 +143,10 @@ to the Trash. If Launch at Login was on, macOS removes the login item with it.
 ## Layout
 
 - `Sources/LookAwayCore` — pure Foundation: `Config`, the `Timekeeper` clock
-  abstraction, the `Schedule` model and its storage, and the `BreakScheduler`
-  state machine.
+  abstraction, the `Schedule` and `MeetingSettings` models and their storage,
+  the `MeetingMonitor` debounce, and the `BreakScheduler` state machine.
 - `Sources/LookAway` — AppKit/SwiftUI shell: menu bar item, floating panel,
-  break view, settings panel, sleep/lock observers, launch-at-login.
-- `Tests/LookAwayCoreTests` — scheduler tests driven by a fake clock.
+  break view, settings panel, the CoreAudio/CoreMediaIO activity probe and the
+  installed-apps scan, sleep/lock observers, launch-at-login.
+- `Tests/LookAwayCoreTests` — scheduler, schedule and meeting-detection tests,
+  driven by a fake clock and a fake device probe.
