@@ -16,33 +16,45 @@ import LookAwayCore
 @MainActor
 final class SystemActivityProbe: MeetingActivityProbing {
     func sample() -> MeetingActivity {
-        MeetingActivity(
-            capturingBundleIDs: microphoneCapturingBundleIDs(),
+        let audio = audioActivity()
+        return MeetingActivity(
+            capturingBundleIDs: audio.capturing,
+            playingBundleIDs: audio.playing,
             isCameraInUse: isAnyCameraRunning(),
             runningBundleIDs: runningBundleIDs()
         )
     }
 
-    // MARK: - Microphone
+    // MARK: - Audio
 
-    private func microphoneCapturingBundleIDs() -> Set<String> {
+    /// Which apps are capturing audio and which are playing it, in one pass
+    /// over the audio processes.
+    private func audioActivity() -> (capturing: Set<String>, playing: Set<String>) {
         // `kAudioHardwarePropertyProcessObjectList` arrived in macOS 14.4. On
         // 14.0-14.3 the query simply fails, and `fallbackInputBundleIDs` stands
         // in with a device-level reading.
         let processes = audioProcessObjectIDs()
-        guard !processes.isEmpty else { return fallbackInputBundleIDs() }
+        guard !processes.isEmpty else { return (fallbackInputBundleIDs(), []) }
 
         var capturing: Set<String> = []
+        var playing: Set<String> = []
         for process in processes {
-            guard flag(process, kAudioProcessPropertyIsRunningInput) else { continue }
-            if let bundleID = string(process, kAudioProcessPropertyBundleID), !bundleID.isEmpty {
-                capturing.insert(bundleID)
-            } else if let bundleID = bundleIDOfProcess(owning: process) {
-                // Helpers and XPC services sometimes report no bundle ID.
-                capturing.insert(bundleID)
-            }
+            let isCapturing = flag(process, kAudioProcessPropertyIsRunningInput)
+            let isPlaying = flag(process, kAudioProcessPropertyIsRunningOutput)
+            guard isCapturing || isPlaying else { continue }
+            guard let bundleID = bundleID(of: process) else { continue }
+            if isCapturing { capturing.insert(bundleID) }
+            if isPlaying { playing.insert(bundleID) }
         }
-        return capturing
+        return (capturing, playing)
+    }
+
+    private func bundleID(of process: AudioObjectID) -> String? {
+        if let bundleID = string(process, kAudioProcessPropertyBundleID), !bundleID.isEmpty {
+            return bundleID
+        }
+        // Helpers and XPC services sometimes report no bundle ID of their own.
+        return bundleIDOfProcess(owning: process)
     }
 
     /// macOS 14.0-14.3 has no per-process audio list. All we can tell there is

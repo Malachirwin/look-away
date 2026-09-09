@@ -18,6 +18,7 @@ struct MeetingSettingsView: View {
                 appsSection.padding(.top, 20)
                 delaySection.padding(.top, 20)
                 cameraToggle.padding(.top, 14)
+                audioOutputToggle.padding(.top, 14)
             }
         }
         .animation(.snappy(duration: 0.2), value: settings.isEnabled)
@@ -87,6 +88,20 @@ struct MeetingSettingsView: View {
                 Text("Keeps you covered while muted but on video.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+            }
+        }
+        .toggleStyle(.switch)
+    }
+
+    /// Off by default, and honest about the cost of turning it on.
+    private var audioOutputToggle: some View {
+        Toggle(isOn: binding(\.countsAudioOutput)) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Count audio playing too").font(.subheadline.weight(.medium))
+                Text("Catches listen-only calls. May also pause for videos and notification sounds.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .toggleStyle(.switch)

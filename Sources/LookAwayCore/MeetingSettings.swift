@@ -20,6 +20,13 @@ public struct MeetingSettings: Codable, Equatable, Sendable {
     /// Count a selected app using the camera, not just the microphone. Catches
     /// the case of sitting muted but on video.
     public var countsCamera: Bool
+    /// Count a selected app *playing* audio as well as capturing it. Catches a
+    /// listen-only call, where the mic is released and the camera is off.
+    ///
+    /// Off by default, and deliberately: browsers and chat apps play audio all
+    /// day for videos and notification sounds, so this trades false negatives
+    /// for false positives rather than removing them.
+    public var countsAudioOutput: Bool
     /// Whether the installed meeting apps have already been offered once. Kept
     /// so clearing the list stays cleared instead of filling back in.
     public var hasSeededApps: Bool
@@ -30,6 +37,7 @@ public struct MeetingSettings: Codable, Equatable, Sendable {
         detectionDelay: TimeInterval = 15,
         endGrace: TimeInterval = 30,
         countsCamera: Bool = true,
+        countsAudioOutput: Bool = false,
         hasSeededApps: Bool = false
     ) {
         self.isEnabled = isEnabled
@@ -37,12 +45,29 @@ public struct MeetingSettings: Codable, Equatable, Sendable {
         self.detectionDelay = detectionDelay
         self.endGrace = endGrace
         self.countsCamera = countsCamera
+        self.countsAudioOutput = countsAudioOutput
         self.hasSeededApps = hasSeededApps
     }
 
-    /// Switched off, with no apps chosen yet. `seedingApps(installed:)` fills
-    /// the list in the first time the panel is opened.
+    /// Switched off, with no apps chosen yet. `seedApps(installed:)` fills the
+    /// list in the first time the panel is opened.
     public static let standard = MeetingSettings()
+
+    /// Decoded key by key, falling back to the default for anything missing.
+    /// The synthesized decoder would throw on a key that a settings file
+    /// written by an older build does not have, which would quietly reset
+    /// every other setting along with it.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let standard = MeetingSettings()
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? standard.isEnabled
+        apps = try container.decodeIfPresent([MeetingApp].self, forKey: .apps) ?? standard.apps
+        detectionDelay = try container.decodeIfPresent(TimeInterval.self, forKey: .detectionDelay) ?? standard.detectionDelay
+        endGrace = try container.decodeIfPresent(TimeInterval.self, forKey: .endGrace) ?? standard.endGrace
+        countsCamera = try container.decodeIfPresent(Bool.self, forKey: .countsCamera) ?? standard.countsCamera
+        countsAudioOutput = try container.decodeIfPresent(Bool.self, forKey: .countsAudioOutput) ?? standard.countsAudioOutput
+        hasSeededApps = try container.decodeIfPresent(Bool.self, forKey: .hasSeededApps) ?? standard.hasSeededApps
+    }
 
     // MARK: - Reading
 
