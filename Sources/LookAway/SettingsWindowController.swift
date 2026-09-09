@@ -24,10 +24,14 @@ final class SettingsWindowController {
         let hosting = NSHostingController(rootView: SettingsView(model: model))
         let window = NSWindow(contentViewController: hosting)
         window.title = "Look Away Settings"
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
         window.isReleasedWhenClosed = false
         window.titlebarAppearsTransparent = true
-        window.setContentSize(hosting.view.fittingSize)
+        // The panel scrolls, so it has no natural height to fit to. Open at a
+        // size that shows both sections expanded and let it be resized.
+        window.setContentSize(NSSize(width: SettingsView.width, height: 620))
+        window.contentMinSize = NSSize(width: SettingsView.width, height: 320)
+        window.contentMaxSize = NSSize(width: SettingsView.width, height: .greatestFiniteMagnitude)
         return window
     }
 }
