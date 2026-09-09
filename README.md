@@ -66,11 +66,19 @@ The same panel can hold reminders while you're on a call. Also opt-in: leave
   asked which processes are holding an input stream, so a Zoom window sitting
   in the background during a call still counts, and Zoom merely being open does
   not. Neither query records anything, so neither one asks for microphone or
-  camera permission.
+  camera permission. Audio *input* and the camera are what count by default;
+  audio output is a separate opt-in, described below.
 - **Count camera use too** covers sitting muted but on video. The system only
   reports camera use per device rather than per process, so it counts only
   while one of your chosen apps is also open — Photo Booth on its own is not a
   meeting.
+- **Count audio playing too** is off by default and best left that way. Audio
+  coming *out* of an app is a weak signal — a YouTube video, a Slack ping and a
+  call all look identical — and browsers and chat apps are in the list above,
+  so switching it on will sometimes hold reminders during ordinary browsing.
+  Worth it only if you sit in listen-only calls that release the microphone
+  entirely; most apps mute in software and keep it open, so they are already
+  covered without this.
 - **Detection delay** is how long the microphone has to stay busy before it
   counts, so a notification chime or a quick "can you hear me?" doesn't hold
   anything. Once a meeting is on, a 30-second grace period keeps a spell on

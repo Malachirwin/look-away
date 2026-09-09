@@ -89,6 +89,37 @@ struct MeetingEvidenceTests {
         #expect(meetingEvidence(in: activity, settings: ignoring) == nil)
     }
 
+    /// Audio playing is off by default, so a video in Chrome is not a meeting.
+    @Test func audioOutputIsIgnoredByDefault() {
+        let activity = MeetingActivity(playingBundleIDs: ["us.zoom.xos"])
+        #expect(meetingEvidence(in: activity, settings: settings) == nil)
+    }
+
+    @Test func audioOutputCountsOnceItIsSwitchedOn() {
+        var listening = settings
+        listening.countsAudioOutput = true
+        let activity = MeetingActivity(playingBundleIDs: ["us.zoom.caphost"])
+        #expect(meetingEvidence(in: activity, settings: listening) == .audioOutput(app: settings.apps[0]))
+    }
+
+    @Test func audioOutputFromAnotherAppIsNotAMeeting() {
+        var listening = settings
+        listening.countsAudioOutput = true
+        let activity = MeetingActivity(playingBundleIDs: ["com.spotify.client"])
+        #expect(meetingEvidence(in: activity, settings: listening) == nil)
+    }
+
+    /// The microphone is the stronger signal and should be the one reported.
+    @Test func microphoneIsPreferredOverAudioOutput() {
+        var listening = settings
+        listening.countsAudioOutput = true
+        let activity = MeetingActivity(
+            capturingBundleIDs: ["us.zoom.xos"],
+            playingBundleIDs: ["us.zoom.xos"]
+        )
+        #expect(meetingEvidence(in: activity, settings: listening) == .microphone(app: settings.apps[0]))
+    }
+
     @Test func nothingIsDetectedWhileSwitchedOff() {
         var off = settings
         off.isEnabled = false
@@ -260,6 +291,35 @@ struct MeetingSettingsTests {
         var settings = MeetingSettings(isEnabled: true, apps: [MeetingApp(bundleID: "us.zoom.xos", name: "Zoom")])
         settings.remove("US.ZOOM.XOS")
         #expect(settings.apps.isEmpty)
+    }
+
+    /// Settings written by a build that predates a new option have to survive
+    /// being read back, rather than resetting every other option with them.
+    @Test func settingsFromAnOlderBuildKeepTheirValues() throws {
+        let saved = """
+        {"isEnabled":true,"apps":[{"bundleID":"us.zoom.xos","name":"Zoom","extraPrefixes":["us.zoom."]}],\
+        "detectionDelay":5,"endGrace":45,"countsCamera":false,"hasSeededApps":true}
+        """
+        let settings = try JSONDecoder().decode(MeetingSettings.self, from: Data(saved.utf8))
+
+        #expect(settings.isEnabled)
+        #expect(settings.apps.map(\.name) == ["Zoom"])
+        #expect(settings.detectionDelay == 5)
+        #expect(settings.endGrace == 45)
+        #expect(!settings.countsCamera)
+        #expect(settings.hasSeededApps)
+        // The option the older build had never heard of falls back to its default.
+        #expect(!settings.countsAudioOutput)
+    }
+
+    @Test func settingsSurviveARoundTrip() throws {
+        var original = MeetingSettings(isEnabled: true, apps: [MeetingApp.presets[0]])
+        original.countsAudioOutput = true
+        let decoded = try JSONDecoder().decode(
+            MeetingSettings.self,
+            from: try JSONEncoder().encode(original)
+        )
+        #expect(decoded == original)
     }
 
     @Test func seedingPicksUpOnlyTheInstalledPresets() {

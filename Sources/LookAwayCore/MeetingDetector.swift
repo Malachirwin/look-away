@@ -5,6 +5,10 @@ public struct MeetingActivity: Equatable, Sendable {
     /// Bundle IDs of the processes currently pulling audio off an input device.
     /// This is real capture, not "the app is open" or "the app is in front".
     public var capturingBundleIDs: Set<String>
+    /// Bundle IDs of the processes currently playing audio out. A far weaker
+    /// signal than capture — a video or a notification sound looks the same as
+    /// a call — so it only counts when explicitly asked for.
+    public var playingBundleIDs: Set<String>
     /// Whether some process is reading a camera. The system reports this per
     /// device rather than per process, so it cannot be pinned on an app by
     /// itself — it only counts alongside a chosen app being open.
@@ -14,10 +18,12 @@ public struct MeetingActivity: Equatable, Sendable {
 
     public init(
         capturingBundleIDs: Set<String> = [],
+        playingBundleIDs: Set<String> = [],
         isCameraInUse: Bool = false,
         runningBundleIDs: Set<String> = []
     ) {
         self.capturingBundleIDs = capturingBundleIDs
+        self.playingBundleIDs = playingBundleIDs
         self.isCameraInUse = isCameraInUse
         self.runningBundleIDs = runningBundleIDs
     }
@@ -34,10 +40,11 @@ public protocol MeetingActivityProbing: AnyObject {
 public enum MeetingEvidence: Equatable, Sendable {
     case microphone(app: MeetingApp)
     case camera(app: MeetingApp)
+    case audioOutput(app: MeetingApp)
 
     public var app: MeetingApp {
         switch self {
-        case .microphone(let app), .camera(let app): return app
+        case .microphone(let app), .camera(let app), .audioOutput(let app): return app
         }
     }
 }
@@ -60,6 +67,14 @@ public func meetingEvidence(
     if settings.countsCamera, activity.isCameraInUse {
         for bundleID in activity.runningBundleIDs.sorted() {
             if let app = settings.app(owning: bundleID) { return .camera(app: app) }
+        }
+    }
+
+    // Last and weakest: a chosen app playing audio. Catches a listen-only call
+    // that released the mic, at the cost of counting videos and alert sounds.
+    if settings.countsAudioOutput {
+        for bundleID in activity.playingBundleIDs.sorted() {
+            if let app = settings.app(owning: bundleID) { return .audioOutput(app: app) }
         }
     }
 
