@@ -18,6 +18,9 @@ public final class BreakScheduler {
         /// The clock is outside the user's schedule. `until` is the next
         /// opening, or nil when no day is active.
         case offSchedule(until: Date?)
+        /// A meeting is in progress. Holds until it ends; there is no telling
+        /// in advance when that will be.
+        case inMeeting
     }
 
     public enum Event: Equatable, Sendable {
@@ -41,6 +44,9 @@ public final class BreakScheduler {
     private let clock: Timekeeper
     private let calendar: Calendar
     private var pending: ScheduledTask?
+    /// Set by `meetingDidStart()` / `meetingDidEnd()`. Consulted whenever the
+    /// next wait is armed, so a meeting outlasts any single transition.
+    private var isInMeeting = false
 
     public init(
         config: Config = .standard,
@@ -90,13 +96,41 @@ public final class BreakScheduler {
     public func apply(schedule: Schedule) {
         self.schedule = schedule
         switch state {
-        case .stopped, .paused, .breaking:
+        case .stopped, .paused, .breaking, .inMeeting:
             break
         case .idle, .offSchedule:
             armWork()
         case .snoozed:
             if !schedule.allows(clock.now(), calendar: calendar) { enterOffSchedule() }
         }
+    }
+
+    /// A meeting started. Holds reminders, and closes a popup that is already
+    /// up — the whole point is not to be interrupted on a call. A user pause
+    /// outranks this and is left alone.
+    public func meetingDidStart() {
+        isInMeeting = true
+        guard state != .stopped else { return }
+        if case .paused = state { return }
+        if case .inMeeting = state { return }
+        cancelPending()
+        if case .breaking = state { emit(.breakDismissed) }
+        state = .inMeeting
+        emit(.scheduleChanged)
+    }
+
+    /// The meeting ended. Starts a fresh work interval so the first reminder
+    /// after a call is a full interval away, not whatever was left over.
+    public func meetingDidEnd() {
+        isInMeeting = false
+        guard case .inMeeting = state else { return }
+        armWork()
+    }
+
+    /// Meeting detection was switched off, so drop any hold it was placing.
+    public func meetingDetectionDidStop() {
+        meetingDidEnd()
+        isInMeeting = false
     }
 
     /// User turned reminders off from the menu.
@@ -128,6 +162,11 @@ public final class BreakScheduler {
 
     private func armWork() {
         cancelPending()
+        if isInMeeting {
+            state = .inMeeting
+            emit(.scheduleChanged)
+            return
+        }
         guard schedule.allows(clock.now(), calendar: calendar) else {
             enterOffSchedule()
             return
@@ -137,9 +176,16 @@ public final class BreakScheduler {
         emit(.scheduleChanged)
     }
 
-    /// A timer-driven break. The window can close mid-interval, so the
-    /// schedule is checked again on arrival. `breakNow()` bypasses this.
+    /// A timer-driven break. A meeting can start and the window can close
+    /// mid-interval, so both are checked again on arrival. `breakNow()`
+    /// bypasses this.
     private func fireScheduledBreak() {
+        if isInMeeting {
+            cancelPending()
+            state = .inMeeting
+            emit(.scheduleChanged)
+            return
+        }
         guard schedule.allows(clock.now(), calendar: calendar) else {
             enterOffSchedule()
             return

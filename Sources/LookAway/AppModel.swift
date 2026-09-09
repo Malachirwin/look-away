@@ -17,27 +17,49 @@ final class AppModel {
 
     /// Mirrors the scheduler's schedule so SwiftUI sees edits immediately.
     private(set) var schedule: Schedule
+    /// Same idea for the meeting settings.
+    private(set) var meetingSettings: MeetingSettings
 
     let config: Config
+    let installedApps = InstalledApps()
     private let scheduler: BreakScheduler
     private let clock: Timekeeper
     private let scheduleStore: ScheduleStoring
+    private let meetingStore: MeetingSettingsStoring
+    private let meetings: MeetingMonitor
     private var panel: BreakPanelController?
     private var doneHide: ScheduledTask?
 
-    init(config: Config = .standard, scheduleStore: ScheduleStoring = UserDefaultsScheduleStore()) {
+    init(
+        config: Config = .standard,
+        scheduleStore: ScheduleStoring = UserDefaultsScheduleStore(),
+        meetingStore: MeetingSettingsStoring = UserDefaultsMeetingSettingsStore()
+    ) {
         self.config = config
         self.scheduleStore = scheduleStore
+        self.meetingStore = meetingStore
         let clock = SystemTimekeeper()
         self.clock = clock
         let schedule = scheduleStore.load()
         self.schedule = schedule
+        let meetingSettings = meetingStore.load()
+        self.meetingSettings = meetingSettings
         scheduler = BreakScheduler(config: config, schedule: schedule, clock: clock)
+        meetings = MeetingMonitor(
+            settings: meetingSettings,
+            probe: SystemActivityProbe(),
+            clock: clock
+        )
         scheduler.onEvent = { [unowned self] event in self.handle(event) }
+        meetings.onChange = { [unowned self] isInMeeting in
+            isInMeeting ? self.scheduler.meetingDidStart() : self.scheduler.meetingDidEnd()
+            self.refreshIcon()
+        }
     }
 
     func start() {
         scheduler.start()
+        meetings.start()
     }
 
     // MARK: User actions
@@ -56,6 +78,33 @@ final class AppModel {
         scheduleStore.save(schedule)
         scheduler.apply(schedule: schedule)
         refreshIcon()
+    }
+
+    /// Single write path for meeting-setting edits, mirroring `updateSchedule`.
+    func updateMeetingSettings(_ settings: MeetingSettings) {
+        guard settings != meetingSettings else { return }
+        let wasEnabled = meetingSettings.isEnabled
+        meetingSettings = settings
+        meetingStore.save(settings)
+        meetings.apply(settings: settings)
+        // Turning it off has to release a hold the monitor already placed;
+        // it will not report an end for a meeting it stopped watching.
+        if wasEnabled, !settings.isEnabled {
+            scheduler.meetingDetectionDidStop()
+        }
+        refreshIcon()
+    }
+
+    /// Called when the settings panel opens. Fills an untouched app list with
+    /// the meeting apps actually installed, so switching the feature on does
+    /// something sensible without the user picking anything first.
+    func prepareMeetingSettings() {
+        Task {
+            let installed = await installedApps.load()
+            var seeded = meetingSettings
+            guard seeded.seedApps(installed: Set(installed.map(\.bundleID))) else { return }
+            updateMeetingSettings(seeded)
+        }
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -136,6 +185,9 @@ final class AppModel {
         case .offSchedule(let until):
             guard let until else { return "Outside schedule" }
             return "Outside schedule — back \(Self.formatOpening(until))"
+        case .inMeeting:
+            guard let app = meetings.evidence?.app else { return "Paused — you're in a meeting" }
+            return "Paused — \(app.name) meeting"
         }
     }
 
@@ -145,6 +197,7 @@ final class AppModel {
         case .breaking: icon = "eye.slash"
         case .paused: icon = "pause.circle"
         case .offSchedule: icon = "moon.zzz"
+        case .inMeeting: icon = "video"
         case .stopped, .idle, .snoozed: icon = "eye"
         }
         if icon != iconName { iconName = icon }
