@@ -9,17 +9,39 @@ struct SettingsView: View {
     static let width: CGFloat = 460
 
     let model: AppModel
+    /// Makes the AppKit time pickers give up the keyboard. Reports whether one
+    /// of them actually had it.
+    let endEditing: () -> Bool
+    /// Called when Escape is pressed with nothing focused.
+    let close: () -> Void
     @State private var isCustomizingDays = false
+    /// Focus for the app search field, held here so a click anywhere else in
+    /// the panel — or Escape — can give it up. Without that there is no way
+    /// out of the field once it is in, and its results list stays open.
+    @FocusState private var isSearchingApps: Bool
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 scheduleSection
                 Divider().padding(.vertical, 20)
-                MeetingSettingsView(model: model)
+                MeetingSettingsView(model: model, isSearching: $isSearchingApps)
             }
             .padding(24)
             .frame(width: Self.width, alignment: .leading)
+        }
+        // Behind everything, and spanning the whole panel rather than just the
+        // content, so a click in the empty space below still counts as one
+        // that missed the fields. Controls sit in front and get the click first.
+        .background(
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { giveUpFocus() }
+        )
+        // Escape hands back whatever holds the keyboard; pressed again, with
+        // nothing focused, it closes the panel the way Escape usually does.
+        .onExitCommand {
+            if !giveUpFocus() { close() }
         }
         .animation(.snappy(duration: 0.2), value: schedule.isEnabled)
         .animation(.snappy(duration: 0.2), value: isCustomizingDays)
@@ -42,6 +64,17 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, 18)
         }
+    }
+
+    /// Leaves nothing focused, covering both kinds of field in the panel.
+    /// Reports whether anything was holding the keyboard to begin with, so
+    /// Escape can fall through to closing the window when nothing was.
+    @discardableResult
+    private func giveUpFocus() -> Bool {
+        let wasSearching = isSearchingApps
+        isSearchingApps = false
+        // Both run: the time pickers are AppKit and answer separately.
+        return endEditing() || wasSearching
     }
 
     // MARK: Sections
