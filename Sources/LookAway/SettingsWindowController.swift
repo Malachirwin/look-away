@@ -26,16 +26,17 @@ final class SettingsWindowController {
         let hosting = NSHostingController(rootView: SettingsView(model: model))
         let window = SettingsWindow(contentViewController: hosting)
         window.title = "Look Away Settings"
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
         window.isReleasedWhenClosed = false
         window.titlebarAppearsTransparent = true
-        window.setContentSize(hosting.view.fittingSize)
+        // The panel scrolls, so it has no natural height to fit to. Open at a
+        // size that shows both sections expanded and let it be resized.
+        window.setContentSize(NSSize(width: SettingsView.width, height: 620))
+        window.contentMinSize = NSSize(width: SettingsView.width, height: 320)
+        window.contentMaxSize = NSSize(width: SettingsView.width, height: .greatestFiniteMagnitude)
         // Reopen where the user left it; only the very first open is centered.
-        // The saved size is stale whenever the content has changed, so it is
-        // reset to fit.
-        if window.setFrameUsingName(Self.frameName) {
-            window.setContentSize(hosting.view.fittingSize)
-        } else {
+        // A stale saved height is harmless now that the content scrolls.
+        if !window.setFrameUsingName(Self.frameName) {
             window.center()
         }
         window.setFrameAutosaveName(Self.frameName)

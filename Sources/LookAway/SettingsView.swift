@@ -1,10 +1,13 @@
 import SwiftUI
 import LookAwayCore
 
-/// Schedule editor. Everything below the opt-in toggle stays hidden until the
-/// user turns the schedule on, and per-day hours stay hidden until they ask
-/// for them, so the common 9-to-5 case is two controls and nothing else.
+/// The settings panel: when reminders are allowed to fire, and when they
+/// should get out of the way. Both halves are opt-in and both stay collapsed
+/// to a single toggle until switched on, so the panel opens quiet.
 struct SettingsView: View {
+    /// Wide enough for a row of app chips to read well.
+    static let width: CGFloat = 460
+
     let model: AppModel
     @State private var isCustomizingDays: Bool
 
@@ -15,6 +18,21 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                scheduleSection
+                Divider().padding(.vertical, 20)
+                MeetingSettingsView(model: model)
+            }
+            .padding(24)
+            .frame(width: Self.width, alignment: .leading)
+        }
+        .animation(.snappy(duration: 0.2), value: schedule.isEnabled)
+        .animation(.snappy(duration: 0.2), value: isCustomizingDays)
+        .animation(.snappy(duration: 0.2), value: schedule.activeDays)
+    }
+
+    private var scheduleSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
 
@@ -25,17 +43,11 @@ struct SettingsView: View {
                 customizeSection.padding(.top, 16)
             }
 
-            Spacer(minLength: 0)
             Text(schedule.summary)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.top, 18)
         }
-        .padding(24)
-        .frame(width: 420, alignment: .leading)
-        .animation(.snappy(duration: 0.2), value: schedule.isEnabled)
-        .animation(.snappy(duration: 0.2), value: isCustomizingDays)
-        .animation(.snappy(duration: 0.2), value: schedule.activeDays)
     }
 
     // MARK: Sections
@@ -54,7 +66,7 @@ struct SettingsView: View {
 
     private var daysSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel("Days")
+            SettingsSectionLabel("Days")
             HStack(spacing: 8) {
                 ForEach(Weekday.week, id: \.self) { day in
                     DayToggle(
@@ -72,7 +84,7 @@ struct SettingsView: View {
 
     private var hoursSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(schedule.overrides.isEmpty ? "Hours" : "Default hours")
+            SettingsSectionLabel(schedule.overrides.isEmpty ? "Hours" : "Default hours")
             HStack(spacing: 8) {
                 TimeField(time: binding(\.hours.start))
                 Text("to").foregroundStyle(.secondary)
@@ -289,7 +301,8 @@ private struct TimeField: View {
     }
 }
 
-private struct SectionLabel: View {
+/// Shared by both sections of the panel.
+struct SettingsSectionLabel: View {
     let text: String
     init(_ text: String) { self.text = text }
 
