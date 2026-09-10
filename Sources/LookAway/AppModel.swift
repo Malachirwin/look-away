@@ -187,9 +187,12 @@ final class AppModel {
             // `until` is only nil when no day is switched on.
             guard let until else { return "No days scheduled" }
             return "Outside schedule — back \(Self.formatOpening(until, from: clock.now()))"
-        case .inMeeting:
-            guard let app = meetings.evidence?.app else { return "Paused — you're in a meeting" }
-            return "Paused — \(app.name) meeting"
+        case .inMeeting(let dueAt):
+            let lead = meetings.evidence.map { "\($0.app.name) meeting" } ?? "In a meeting"
+            let remaining = dueAt.timeIntervalSince(clock.now())
+            // The countdown keeps running on a call, so it can already be owed.
+            guard remaining > 0 else { return "\(lead) — break when you're free" }
+            return "\(lead) — next break in \(Self.format(remaining))"
         }
     }
 
