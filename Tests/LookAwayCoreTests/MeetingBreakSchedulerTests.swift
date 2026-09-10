@@ -134,6 +134,57 @@ struct MeetingBreakSchedulerTests {
         #expect(scheduler.state == .breaking(remaining: 5))
     }
 
+    /// Delaying a break taken by hand during a call has to keep reading as a
+    /// meeting. Detection only reports a meeting when one starts, so nothing
+    /// would come along afterwards to correct a "delayed" state.
+    @Test func delayingDuringAMeetingStillReadsAsAMeeting() {
+        let scheduler = makeScheduler()
+        scheduler.start()
+        scheduler.meetingDidStart()
+        scheduler.breakNow()
+        #expect(scheduler.state == .breaking(remaining: 5))
+
+        scheduler.snooze()
+        #expect(scheduler.state == .inMeeting(dueAt: at(10)))
+    }
+
+    /// The delay's own deadline is what the meeting then owes.
+    @Test func aDelayDuringAMeetingKeepsItsDeadline() {
+        let scheduler = makeScheduler()
+        scheduler.start()
+        scheduler.meetingDidStart()
+        scheduler.breakNow()
+        scheduler.snooze() // due at 10
+
+        clock.advance(by: 5)
+        scheduler.meetingDidEnd()
+        #expect(scheduler.state == .idle(fireAt: at(10)))
+
+        clock.advance(by: 5)
+        #expect(scheduler.state == .breaking(remaining: 5))
+    }
+
+    @Test func aDelayThatRanOutDuringTheCallOpensAtTheEnd() {
+        let scheduler = makeScheduler()
+        scheduler.start()
+        scheduler.meetingDidStart()
+        scheduler.breakNow()
+        scheduler.snooze() // due at 10
+
+        clock.advance(by: 300)
+        scheduler.meetingDidEnd()
+        #expect(scheduler.state == .breaking(remaining: 5))
+    }
+
+    /// Delaying with no call on still reads as delayed, as it always has.
+    @Test func delayingOutsideAMeetingIsUnchanged() {
+        let scheduler = makeScheduler()
+        scheduler.start()
+        clock.advance(by: 100)
+        scheduler.snooze()
+        #expect(scheduler.state == .snoozed(until: at(110)))
+    }
+
     // MARK: Precedence
 
     /// The menu's pause is the user's own call and outranks detection.

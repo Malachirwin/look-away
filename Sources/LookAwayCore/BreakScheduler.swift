@@ -88,9 +88,18 @@ public final class BreakScheduler {
         guard case .breaking = state else { return }
         cancelPending()
         emit(.breakDismissed)
-        let duration = config.snoozeInterval
-        state = .snoozed(until: clock.now().addingTimeInterval(duration))
-        pending = clock.schedule(after: duration) { [weak self] in self?.fireScheduledBreak() }
+        let until = clock.now().addingTimeInterval(config.snoozeInterval)
+        // A break delayed while on a call is still a call, and that is the more
+        // useful thing to be told: "delayed" suggests the wait is the only
+        // reason nothing is happening. The popup is held either way, and the
+        // delay's own deadline carries over as the one the meeting owes.
+        if isInMeeting {
+            state = .inMeeting(dueAt: until)
+            emit(.scheduleChanged)
+            return
+        }
+        state = .snoozed(until: until)
+        pending = clock.schedule(after: config.snoozeInterval) { [weak self] in self?.fireScheduledBreak() }
         emit(.scheduleChanged)
     }
 

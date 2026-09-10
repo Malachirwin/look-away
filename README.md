@@ -95,8 +95,10 @@ The same panel can hold reminders while you're on a call. Also opt-in: leave
   as soon as the call ends, since you never got it.
 - While a meeting is on, the menu bar shows a video camera and the menu reads
   "Zoom meeting — next break in 4:32", or "break when you're free" once it's
-  already due. **Take a Break Now** still works, and pausing from the menu
-  still outranks detection.
+  already due. That holds even if you **Delay** a break you took by hand
+  during the call — being on a call is the more useful thing to be told, and
+  the delay's own deadline becomes the one the meeting owes. **Take a Break
+  Now** still works, and pausing from the menu still outranks detection.
 
 Capture processes don't always share their app's bundle ID — Zoom captures from
 `us.zoom.caphost` alongside `us.zoom.xos`, and Electron apps capture from a
