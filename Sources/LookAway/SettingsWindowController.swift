@@ -101,9 +101,11 @@ final class SettingsWindowController {
         )
         let window = NSWindow(contentViewController: hosting)
         window.title = "Look Away Settings"
-        window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
+        // No `.fullSizeContentView`: that draws the content up behind the
+        // titlebar, which a scrolling panel then slides its controls under.
+        // A plain titlebar gives the content a hard edge to stop against.
+        window.styleMask = [.titled, .closable, .resizable]
         window.isReleasedWhenClosed = false
-        window.titlebarAppearsTransparent = true
         // The panel scrolls, so it has no natural height to fit to. Open at a
         // size that shows both sections expanded and let it be resized.
         window.setContentSize(NSSize(width: SettingsView.width, height: 620))
