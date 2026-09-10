@@ -84,10 +84,19 @@ The same panel can hold reminders while you're on a call. Also opt-in: leave
   anything. Once a meeting is on, a 30-second grace period keeps a spell on
   mute — or the gap between two back-to-back calls — from letting a popup
   through.
+- **The 20 minutes keeps running through a call.** Only the popup is held
+  back, so time on the call still counts towards the next break:
+  - A break that came due during the call opens the moment you hang up —
+    which is when you most want it, after an hour of staring at faces.
+  - A call shorter than the time left just carries on counting, so the break
+    lands when it always would have, not 20 minutes after the call.
+  - Either way it's one break, not a queue of them.
+- A meeting starting mid-break closes the popup, and that break is owed again
+  as soon as the call ends, since you never got it.
 - While a meeting is on, the menu bar shows a video camera and the menu reads
-  "Paused — Zoom meeting". A meeting starting mid-break closes the popup, and
-  the next reminder is a full 20 minutes after the call ends. **Take a Break
-  Now** still works, and pausing from the menu still outranks detection.
+  "Zoom meeting — next break in 4:32", or "break when you're free" once it's
+  already due. **Take a Break Now** still works, and pausing from the menu
+  still outranks detection.
 
 Capture processes don't always share their app's bundle ID — Zoom captures from
 `us.zoom.caphost` alongside `us.zoom.xos`, and Electron apps capture from a

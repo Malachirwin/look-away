@@ -185,9 +185,12 @@ final class AppModel {
         case .offSchedule(let until):
             guard let until else { return "Outside schedule" }
             return "Outside schedule — back \(Self.formatOpening(until))"
-        case .inMeeting:
-            guard let app = meetings.evidence?.app else { return "Paused — you're in a meeting" }
-            return "Paused — \(app.name) meeting"
+        case .inMeeting(let dueAt):
+            let lead = meetings.evidence.map { "\($0.app.name) meeting" } ?? "In a meeting"
+            let remaining = dueAt.timeIntervalSince(clock.now())
+            // The countdown keeps running on a call, so it can already be owed.
+            guard remaining > 0 else { return "\(lead) — break when you're free" }
+            return "\(lead) — next break in \(Self.format(remaining))"
         }
     }
 
