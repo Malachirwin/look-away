@@ -48,14 +48,15 @@ final class AppModel {
     func togglePause() { isPaused ? scheduler.resume() : scheduler.pause() }
     func systemDidSuspend() { scheduler.systemDidSuspend() }
     func systemDidResume() { scheduler.systemDidResume() }
+    func clockDidChange() { scheduler.clockDidChange() }
 
-    /// Single write path for schedule edits: persist, apply, refresh display.
+    /// Single write path for schedule edits: persist, then apply. The
+    /// scheduler's `scheduleChanged` event refreshes the display.
     func updateSchedule(_ schedule: Schedule) {
         guard schedule != self.schedule else { return }
         self.schedule = schedule
         scheduleStore.save(schedule)
         scheduler.apply(schedule: schedule)
-        refreshIcon()
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {

@@ -46,7 +46,7 @@ public final class BreakScheduler {
         config: Config = .standard,
         schedule: Schedule = .standard,
         clock: Timekeeper,
-        calendar: Calendar = .current
+        calendar: Calendar = .autoupdatingCurrent
     ) {
         self.config = config
         self.schedule = schedule
@@ -74,29 +74,36 @@ public final class BreakScheduler {
         armWork()
     }
 
-    /// Hide the popup and bring it back after the snooze interval.
+    /// Hide the popup and bring it back after the snooze interval. A break the
+    /// user opened outside the schedule comes back regardless of the window,
+    /// since `breakNow()` already bypassed it on their behalf.
     public func snooze() {
         guard case .breaking = state else { return }
         cancelPending()
         emit(.breakDismissed)
-        let duration = config.snoozeInterval
-        state = .snoozed(until: clock.now().addingTimeInterval(duration))
-        pending = clock.schedule(after: duration) { [weak self] in self?.fireScheduledBreak() }
+        let now = clock.now()
+        let until = now.addingTimeInterval(config.snoozeInterval)
+        state = .snoozed(until: until)
+        if schedule.allows(now, calendar: calendar) {
+            wait(until: until)
+        } else {
+            pending = clock.schedule(after: config.snoozeInterval) { [weak self] in self?.beginBreak() }
+        }
         emit(.scheduleChanged)
     }
 
-    /// Adopt an edited schedule and re-evaluate the current wait. An in-progress
-    /// break is left alone; the new schedule takes effect when it closes.
+    /// Adopt an edited schedule and re-check the current wait against it. The
+    /// wait keeps its target, so editing does not restart the work interval.
+    /// An in-progress break is left alone; the new schedule applies when it closes.
     public func apply(schedule: Schedule) {
         self.schedule = schedule
-        switch state {
-        case .stopped, .paused, .breaking:
-            break
-        case .idle, .offSchedule:
-            armWork()
-        case .snoozed:
-            if !schedule.allows(clock.now(), calendar: calendar) { enterOffSchedule() }
-        }
+        reevaluate()
+    }
+
+    /// The system clock or time zone changed. Window edges are recomputed and
+    /// a target that has already passed fires straight away.
+    public func clockDidChange() {
+        reevaluate()
     }
 
     /// User turned reminders off from the menu.
@@ -126,25 +133,65 @@ public final class BreakScheduler {
 
     // MARK: - Transitions
 
+    /// A fresh work interval from now, or a hold if the schedule is closed.
     private func armWork() {
         cancelPending()
-        guard schedule.allows(clock.now(), calendar: calendar) else {
+        let now = clock.now()
+        guard schedule.allows(now, calendar: calendar) else {
             enterOffSchedule()
             return
         }
-        state = .idle(fireAt: clock.now().addingTimeInterval(config.workInterval))
-        pending = clock.schedule(after: config.workInterval) { [weak self] in self?.fireScheduledBreak() }
+        let fireAt = now.addingTimeInterval(config.workInterval)
+        state = .idle(fireAt: fireAt)
+        wait(until: fireAt)
         emit(.scheduleChanged)
     }
 
-    /// A timer-driven break. The window can close mid-interval, so the
-    /// schedule is checked again on arrival. `breakNow()` bypasses this.
-    private func fireScheduledBreak() {
-        guard schedule.allows(clock.now(), calendar: calendar) else {
-            enterOffSchedule()
+    /// Sleep until `target`, or until the schedule window closes if that comes
+    /// first. Either way `evaluate()` decides what the wake-up means.
+    private func wait(until target: Date) {
+        cancelPending()
+        let now = clock.now()
+        let close = schedule.currentWindowEnd(at: now, calendar: calendar) ?? target
+        let wake = min(target, close)
+        pending = clock.schedule(after: wake.timeIntervalSince(now)) { [weak self] in self?.evaluate() }
+    }
+
+    /// Re-check a running wait after the schedule or the clock changed. States
+    /// without a timer have nothing to re-check.
+    private func reevaluate() {
+        switch state {
+        case .stopped, .paused, .breaking:
             return
+        case .idle, .snoozed, .offSchedule:
+            cancelPending()
+            evaluate()
         }
-        beginBreak()
+    }
+
+    /// A timer woke up, or something changed under it: decide from wall time.
+    /// Emits exactly one event.
+    private func evaluate() {
+        let now = clock.now()
+        switch state {
+        case .idle(let target), .snoozed(let target):
+            guard schedule.allows(now, calendar: calendar) else {
+                enterOffSchedule()
+                return
+            }
+            if target > now {
+                // Still inside a window (the one that closed was followed by
+                // another), so keep waiting for the same target.
+                wait(until: target)
+                emit(.scheduleChanged)
+            } else {
+                beginBreak()
+            }
+        case .offSchedule:
+            armWork()
+        case .stopped, .paused, .breaking:
+            break
+        }
     }
 
     private func beginBreak() {
@@ -176,7 +223,6 @@ public final class BreakScheduler {
     /// Hold until the schedule opens again. Re-arms itself at that moment.
     private func enterOffSchedule() {
         cancelPending()
-        if case .breaking = state { emit(.breakDismissed) }
         let now = clock.now()
         let opensAt = schedule.nextOpening(after: now, calendar: calendar)
         state = .offSchedule(until: opensAt)
