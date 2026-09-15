@@ -193,6 +193,8 @@ struct ScheduleTests {
 
         let data = try JSONEncoder().encode(schedule)
         #expect(try JSONDecoder().decode(Schedule.self, from: data) == schedule)
+        // Weekday keys must stay JSON object keys so stored schedules keep loading.
+        #expect(String(decoding: data, as: UTF8.self).contains("\"6\":"))
     }
 
     @Test func weekIsSundayFirstWithTheRightInitials() {

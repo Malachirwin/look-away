@@ -1,7 +1,7 @@
 import Foundation
 
 /// A day of the week, numbered to match `Calendar`'s `weekday` component.
-public enum Weekday: Int, CaseIterable, Codable, Sendable, Comparable {
+public enum Weekday: Int, CaseIterable, Codable, Sendable {
     case sunday = 1, monday, tuesday, wednesday, thursday, friday, saturday
 
     /// Sunday-first order, matching how the settings panel lays out the week.
@@ -24,10 +24,6 @@ public enum Weekday: Int, CaseIterable, Codable, Sendable, Comparable {
         case .friday: return "Friday"
         case .saturday: return "Saturday"
         }
-    }
-
-    public static func < (lhs: Weekday, rhs: Weekday) -> Bool {
-        lhs.rawValue < rhs.rawValue
     }
 }
 
@@ -213,20 +209,6 @@ public struct Schedule: Codable, Equatable, Sendable {
     }
 }
 
-/// Enum keys encode as JSON object keys rather than a flat pair array.
-extension Weekday: CodingKeyRepresentable {
-    public var codingKey: any CodingKey { StringCodingKey(String(rawValue)) }
-
-    public init?<T: CodingKey>(codingKey: T) {
-        guard let raw = Int(codingKey.stringValue) else { return nil }
-        self.init(rawValue: raw)
-    }
-
-    private struct StringCodingKey: CodingKey {
-        let stringValue: String
-        var intValue: Int? { Int(stringValue) }
-        init(_ value: String) { stringValue = value }
-        init?(stringValue: String) { self.init(stringValue) }
-        init?(intValue: Int) { self.init(String(intValue)) }
-    }
-}
+/// Enum keys encode as JSON object keys ("2": …) rather than a flat pair
+/// array. The standard library supplies the implementation for `Int` raw values.
+extension Weekday: CodingKeyRepresentable {}
