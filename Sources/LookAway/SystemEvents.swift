@@ -1,19 +1,27 @@
 import AppKit
 
-/// Forwards sleep/wake and screen lock/unlock to the scheduler.
+/// Forwards sleep/wake, screen lock/unlock, and clock or time zone changes to
+/// the scheduler.
 @MainActor
 final class SystemEvents {
     /// Lives for the whole process; observers are never removed.
     private var tokens: [NSObjectProtocol] = []
 
-    init(onSuspend: @escaping @MainActor () -> Void, onResume: @escaping @MainActor () -> Void) {
+    init(
+        onSuspend: @escaping @MainActor () -> Void,
+        onResume: @escaping @MainActor () -> Void,
+        onClockChange: @escaping @MainActor () -> Void
+    ) {
         let workspace = NSWorkspace.shared.notificationCenter
         let distributed = DistributedNotificationCenter.default()
+        let process = NotificationCenter.default
 
         observe(workspace, NSWorkspace.willSleepNotification, onSuspend)
         observe(workspace, NSWorkspace.didWakeNotification, onResume)
         observe(distributed, Notification.Name("com.apple.screenIsLocked"), onSuspend)
         observe(distributed, Notification.Name("com.apple.screenIsUnlocked"), onResume)
+        observe(process, .NSSystemClockDidChange, onClockChange)
+        observe(process, .NSSystemTimeZoneDidChange, onClockChange)
     }
 
     private func observe(_ center: NotificationCenter, _ name: Notification.Name, _ action: @escaping @MainActor () -> Void) {

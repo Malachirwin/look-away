@@ -31,11 +31,18 @@ final class FakeTimekeeper: Timekeeper {
         let target = current.addingTimeInterval(interval)
         while let next = tasks.filter({ !$0.cancelled }).min(by: { $0.fireAt < $1.fireAt }), next.fireAt <= target {
             tasks.removeAll { $0 === next }
-            current = next.fireAt
+            current = max(current, next.fireAt)
             next.action()
         }
         tasks.removeAll { $0.cancelled }
         current = target
+    }
+
+    /// Move the clock without firing anything, the way a wall-clock or time
+    /// zone change moves `Date()` under timers that keep counting real seconds.
+    /// Callers are expected to tell the scheduler via `clockDidChange()`.
+    func jump(to date: Date) {
+        current = date
     }
 
     var pendingCount: Int { tasks.filter { !$0.cancelled }.count }

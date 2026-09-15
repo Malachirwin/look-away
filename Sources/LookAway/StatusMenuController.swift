@@ -7,18 +7,21 @@ import Observation
 @MainActor
 final class StatusMenuController: NSObject, NSMenuDelegate {
     private let model: AppModel
+    private let settings: SettingsWindowController
     private let statusItem: NSStatusItem
     private let menu = NSMenu()
 
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "", action: #selector(togglePause), keyEquivalent: "")
     private let breakNowItem = NSMenuItem(title: "Take a Break Now", action: #selector(breakNow), keyEquivalent: "")
+    private let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
     private let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
     private let loginErrorItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private var refreshTimer: Timer?
 
     init(model: AppModel) {
         self.model = model
+        settings = SettingsWindowController(model: model)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
         buildMenu()
@@ -36,9 +39,17 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
         let quitItem = NSMenuItem(title: "Quit Look Away", action: #selector(quit), keyEquivalent: "q")
 
-        for item in [pauseItem, breakNowItem, loginItem, quitItem] {
+        for item in [pauseItem, breakNowItem, settingsItem, loginItem, quitItem] {
             item.target = self
         }
+
+        // macOS 26 indents a menu section only when something in it has a
+        // symbol or a checkmark, so a section without one sits flush and looks
+        // misaligned next to Launch at Login. Every section gets a symbol; the
+        // actions show the icon of the state they lead to.
+        breakNowItem.image = Self.symbol("eye.slash")
+        settingsItem.image = Self.symbol("gearshape")
+        quitItem.image = Self.symbol("power")
 
         menu.items = [
             statusLine,
@@ -48,6 +59,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             .separator(),
             loginItem,
             loginErrorItem,
+            settingsItem,
             .separator(),
             quitItem,
         ]
@@ -73,7 +85,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     private func refreshItems() {
         statusLine.title = model.statusText
+        statusLine.image = Self.symbol(model.iconName)
         pauseItem.title = model.isPaused ? "Resume Reminders" : "Pause Reminders"
+        pauseItem.image = Self.symbol(model.isPaused ? "play.circle" : "pause.circle")
         breakNowItem.isEnabled = !model.isBreaking
         loginItem.state = model.launchAtLoginEnabled ? .on : .off
         loginErrorItem.title = model.launchAtLoginError ?? ""
@@ -91,10 +105,15 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         }
     }
 
+    private static func symbol(_ name: String) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)
+    }
+
     // MARK: Actions
 
     @objc private func togglePause() { model.togglePause() }
     @objc private func breakNow() { model.breakNow() }
+    @objc private func openSettings() { settings.show() }
     @objc private func toggleLaunchAtLogin() { model.setLaunchAtLogin(!model.launchAtLoginEnabled) }
     @objc private func quit() { NSApp.terminate(nil) }
 }

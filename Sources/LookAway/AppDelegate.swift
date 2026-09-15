@@ -10,7 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu = StatusMenuController(model: model)
         systemEvents = SystemEvents(
             onSuspend: { [model] in model.systemDidSuspend() },
-            onResume: { [model] in model.systemDidResume() }
+            onResume: { [model] in model.systemDidResume() },
+            onClockChange: { [model] in model.clockDidChange() }
         )
         LaunchAtLogin.registerOnFirstInstalledLaunch()
         model.refreshLaunchAtLogin()
