@@ -64,28 +64,36 @@ struct MeetingEvidenceTests {
         #expect(meetingEvidence(in: activity, settings: settings) == nil)
     }
 
-    /// The point of the feature: an app being open, or in front, is not enough.
+    /// The point of the feature: an app being open, or in front, is not enough
+    /// — it has to be on a device itself.
     @Test func aChosenAppMerelyRunningIsNotAMeeting() {
-        let activity = MeetingActivity(runningBundleIDs: ["us.zoom.xos"])
-        #expect(meetingEvidence(in: activity, settings: settings) == nil)
+        #expect(meetingEvidence(in: MeetingActivity(), settings: settings) == nil)
     }
 
-    @Test func cameraUseCountsWhenAChosenAppIsOpen() {
-        let activity = MeetingActivity(isCameraInUse: true, runningBundleIDs: ["us.zoom.xos"])
+    /// Muted on video: the mic is released but the call's audio still plays.
+    @Test func cameraUseCountsWhenAChosenAppIsOnTheAudioDevices() {
+        let activity = MeetingActivity(playingBundleIDs: ["us.zoom.caphost"], isCameraInUse: true)
         #expect(meetingEvidence(in: activity, settings: settings) == .camera(app: settings.apps[0]))
     }
 
-    /// The camera is reported per device, so with no chosen app open there is
-    /// nothing to pin it on — Photo Booth must not read as a meeting.
+    /// The camera is reported per device, so an app that is only *open* cannot
+    /// be blamed for it — Photo Booth must not read as a Zoom meeting just
+    /// because Zoom is running.
+    @Test func cameraUseByAnotherAppIsNotAMeeting() {
+        let activity = MeetingActivity(playingBundleIDs: ["com.apple.PhotoBooth"], isCameraInUse: true)
+        #expect(meetingEvidence(in: activity, settings: settings) == nil)
+    }
+
+    /// The camera alone, with no chosen app on a device, is nobody's meeting.
     @Test func cameraUseAloneIsNotAMeeting() {
-        let activity = MeetingActivity(isCameraInUse: true, runningBundleIDs: ["com.apple.PhotoBooth"])
+        let activity = MeetingActivity(isCameraInUse: true)
         #expect(meetingEvidence(in: activity, settings: settings) == nil)
     }
 
     @Test func cameraCanBeIgnored() {
         var ignoring = settings
         ignoring.countsCamera = false
-        let activity = MeetingActivity(isCameraInUse: true, runningBundleIDs: ["us.zoom.xos"])
+        let activity = MeetingActivity(playingBundleIDs: ["us.zoom.caphost"], isCameraInUse: true)
         #expect(meetingEvidence(in: activity, settings: ignoring) == nil)
     }
 

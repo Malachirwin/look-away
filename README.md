@@ -69,13 +69,17 @@ The same panel can hold reminders while you're on a call. Also opt-in: leave
 - Detection watches **real device use, not which app is in front**: macOS is
   asked which processes are holding an input stream, so a Zoom window sitting
   in the background during a call still counts, and Zoom merely being open does
-  not. Neither query records anything, so neither one asks for microphone or
+  not. Every meeting is pinned on a named app that is genuinely on a device;
+  activity that can't be attributed to one of your chosen apps is ignored. Neither query records anything, so neither one asks for microphone or
   camera permission. Audio *input* and the camera are what count by default;
   audio output is a separate opt-in, described below.
 - **Count camera use too** covers sitting muted but on video. The system only
-  reports camera use per device rather than per process, so it counts only
-  while one of your chosen apps is also open — Photo Booth on its own is not a
-  meeting.
+  reports camera use per device rather than per process, so it can never name
+  the app on its own: it counts only while one of your chosen apps is itself on
+  the audio devices, playing the call you are listening to. A chosen app merely
+  being *open* is not enough, so Photo Booth — or anything else using the
+  camera — is never mistaken for a meeting just because Zoom or a browser
+  happens to be running.
 - **Count audio playing too** is off by default and best left that way. Audio
   coming *out* of an app is a weak signal — a YouTube video, a Slack ping and a
   call all look identical — and browsers and chat apps are in the list above,

@@ -7,25 +7,22 @@ public struct MeetingActivity: Equatable, Sendable {
     public var capturingBundleIDs: Set<String>
     /// Bundle IDs of the processes currently playing audio out. A far weaker
     /// signal than capture — a video or a notification sound looks the same as
-    /// a call — so it only counts when explicitly asked for.
+    /// a call — so on its own it only counts when explicitly asked for.
     public var playingBundleIDs: Set<String>
     /// Whether some process is reading a camera. The system reports this per
-    /// device rather than per process, so it cannot be pinned on an app by
-    /// itself — it only counts alongside a chosen app being open.
+    /// device rather than per process, so it can never be pinned on an app by
+    /// itself — it only corroborates an app that is already on the audio
+    /// devices.
     public var isCameraInUse: Bool
-    /// Bundle IDs of the apps currently running.
-    public var runningBundleIDs: Set<String>
 
     public init(
         capturingBundleIDs: Set<String> = [],
         playingBundleIDs: Set<String> = [],
-        isCameraInUse: Bool = false,
-        runningBundleIDs: Set<String> = []
+        isCameraInUse: Bool = false
     ) {
         self.capturingBundleIDs = capturingBundleIDs
         self.playingBundleIDs = playingBundleIDs
         self.isCameraInUse = isCameraInUse
-        self.runningBundleIDs = runningBundleIDs
     }
 }
 
@@ -50,6 +47,12 @@ public enum MeetingEvidence: Equatable, Sendable {
 }
 
 /// Decides whether the raw activity counts as a meeting, given the settings.
+///
+/// Every answer names the app responsible, and an app only becomes responsible
+/// by actually being on a device — never by merely running. Anything that
+/// cannot be attributed to a chosen app is not a meeting, however busy the
+/// hardware looks.
+///
 /// Pure, so the matching rules can be tested on their own.
 public func meetingEvidence(
     in activity: MeetingActivity,
@@ -62,16 +65,20 @@ public func meetingEvidence(
         if let app = settings.app(owning: bundleID) { return .microphone(app: app) }
     }
 
-    // The camera cannot be attributed, so it only counts when a chosen app is
-    // open to account for it. Being muted on video still reads as a meeting.
+    // The camera cannot be attributed on its own, so it counts only as a
+    // second signal on an app that is already playing the call's audio — being
+    // muted on video still reads as a meeting. A chosen app merely being open
+    // is not enough: that would make Photo Booth, or a camera-using app the
+    // user never chose, look like a meeting in any browser's company.
     if settings.countsCamera, activity.isCameraInUse {
-        for bundleID in activity.runningBundleIDs.sorted() {
+        for bundleID in activity.playingBundleIDs.sorted() {
             if let app = settings.app(owning: bundleID) { return .camera(app: app) }
         }
     }
 
-    // Last and weakest: a chosen app playing audio. Catches a listen-only call
-    // that released the mic, at the cost of counting videos and alert sounds.
+    // Last and weakest: a chosen app playing audio, with nothing corroborating
+    // it. Catches a listen-only call that released the mic and has no video, at
+    // the cost of counting ordinary videos and alert sounds.
     if settings.countsAudioOutput {
         for bundleID in activity.playingBundleIDs.sorted() {
             if let app = settings.app(owning: bundleID) { return .audioOutput(app: app) }

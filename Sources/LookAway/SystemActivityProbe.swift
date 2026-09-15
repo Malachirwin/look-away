@@ -9,7 +9,8 @@ import LookAwayCore
 /// out the ones with a live input stream, which gives both "is the mic being
 /// captured" and "by whom" in one pass. The camera side asks CoreMediaIO
 /// whether any camera is running; that answer is per device rather than per
-/// process, so on its own it says nothing about which app is responsible.
+/// process, so on its own it says nothing about which app is responsible, and
+/// the matching rules only ever use it to corroborate an attributed app.
 ///
 /// Neither query records anything or opens a device, so neither one trips the
 /// microphone or camera permission prompts.
@@ -20,8 +21,7 @@ final class SystemActivityProbe: MeetingActivityProbing {
         return MeetingActivity(
             capturingBundleIDs: audio.capturing,
             playingBundleIDs: audio.playing,
-            isCameraInUse: isAnyCameraRunning(),
-            runningBundleIDs: runningBundleIDs()
+            isCameraInUse: isAnyCameraRunning()
         )
     }
 
@@ -31,10 +31,12 @@ final class SystemActivityProbe: MeetingActivityProbing {
     /// over the audio processes.
     private func audioActivity() -> (capturing: Set<String>, playing: Set<String>) {
         // `kAudioHardwarePropertyProcessObjectList` arrived in macOS 14.4. On
-        // 14.0-14.3 the query simply fails, and `fallbackInputBundleIDs` stands
-        // in with a device-level reading.
+        // 14.0-14.3 the query fails and there is no per-process reading to be
+        // had. The device-level answer says only that *something* is on the
+        // microphone, which cannot be pinned on a chosen app, so nothing is
+        // reported rather than blaming whichever meeting app happens to be open.
         let processes = audioProcessObjectIDs()
-        guard !processes.isEmpty else { return (fallbackInputBundleIDs(), []) }
+        guard !processes.isEmpty else { return ([], []) }
 
         var capturing: Set<String> = []
         var playing: Set<String> = []
@@ -57,16 +59,6 @@ final class SystemActivityProbe: MeetingActivityProbing {
         return bundleIDOfProcess(owning: process)
     }
 
-    /// macOS 14.0-14.3 has no per-process audio list. All we can tell there is
-    /// whether the default input device is running, so every chosen app that is
-    /// open gets the credit and the camera rule ends up doing the same work.
-    private func fallbackInputBundleIDs() -> Set<String> {
-        guard let device = defaultInputDevice(),
-              flag(device, kAudioDevicePropertyDeviceIsRunningSomewhere)
-        else { return [] }
-        return runningBundleIDs()
-    }
-
     private func audioProcessObjectIDs() -> [AudioObjectID] {
         var address = Self.address(kAudioHardwarePropertyProcessObjectList)
         var size: UInt32 = 0
@@ -80,16 +72,6 @@ final class SystemActivityProbe: MeetingActivityProbing {
             AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids
         ) == noErr else { return [] }
         return ids
-    }
-
-    private func defaultInputDevice() -> AudioObjectID? {
-        var address = Self.address(kAudioHardwarePropertyDefaultInputDevice)
-        var device = AudioObjectID(kAudioObjectUnknown)
-        var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device
-        ) == noErr, device != AudioObjectID(kAudioObjectUnknown) else { return nil }
-        return device
     }
 
     /// Last resort for a process with no bundle ID of its own: look its PID up
@@ -130,12 +112,6 @@ final class SystemActivityProbe: MeetingActivityProbing {
         guard CMIOObjectGetPropertyData(device, &address, 0, nil, size, &used, &running) == noErr
         else { return false }
         return running != 0
-    }
-
-    // MARK: - Running apps
-
-    private func runningBundleIDs() -> Set<String> {
-        Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
     }
 
     // MARK: - Property helpers
