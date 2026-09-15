@@ -6,7 +6,13 @@ import LookAwayCore
 /// for them, so the common 9-to-5 case is two controls and nothing else.
 struct SettingsView: View {
     let model: AppModel
-    @State private var isCustomizingDays = false
+    @State private var isCustomizingDays: Bool
+
+    /// Opens with the per-day list showing whenever there is something in it.
+    init(model: AppModel) {
+        self.model = model
+        _isCustomizingDays = State(initialValue: !model.schedule.overrides.isEmpty)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -73,6 +79,13 @@ struct SettingsView: View {
                 TimeField(time: binding(\.hours.end))
             }
             .disabled(schedule.activeDays.isEmpty)
+
+            // The pickers cannot show that the window rolls past midnight.
+            if let note = schedule.hours.spanNote {
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -172,9 +185,9 @@ private struct DayToggle: View {
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .frame(width: 32, height: 32)
                     .background(
-                        Circle().fill(isActive ? Color.accentColor : Color.primary.opacity(0.08))
+                        Circle().fill(isActive ? Color.accentColor : Color.primary.opacity(0.12))
                     )
-                    .foregroundStyle(isActive ? Color.white : Color.secondary)
+                    .foregroundStyle(isActive ? Color.white : Color.primary.opacity(0.65))
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -184,7 +197,7 @@ private struct DayToggle: View {
 
             Circle()
                 .fill(Color.accentColor)
-                .frame(width: 4, height: 4)
+                .frame(width: 6, height: 6)
                 .opacity(hasCustomHours ? 1 : 0)
         }
         .contextMenu {
@@ -210,9 +223,17 @@ private struct DayHoursRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(day.name)
-                .font(.subheadline)
-                .frame(width: 82, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(day.name)
+                    .font(.subheadline)
+                // Pickers cannot show a roll past midnight; the label can.
+                if let note = override?.shortSpanNote {
+                    Text(note)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 82, alignment: .leading)
 
             if let window = override {
                 TimeField(time: windowBinding(window).start)
@@ -232,6 +253,8 @@ private struct DayHoursRow: View {
                     .font(.subheadline)
             }
         }
+        // Picker rows are taller than text rows; one height keeps the rhythm.
+        .frame(minHeight: 26)
     }
 
     private func windowBinding(_ window: TimeWindow) -> (start: Binding<TimeOfDay>, end: Binding<TimeOfDay>) {
@@ -280,7 +303,27 @@ private struct SectionLabel: View {
 // MARK: - Presentation
 
 private extension TimeWindow {
-    var formatted: String { "\(start.formatted) – \(end.formatted)" }
+    var isAllDay: Bool { start == end }
+
+    var formatted: String {
+        if isAllDay { return "All day" }
+        let span = "\(start.formatted) – \(end.formatted)"
+        return isOvernight ? "\(span) (next day)" : span
+    }
+
+    /// Footnote under the shared-hours pickers, or nil for an ordinary day.
+    var spanNote: String? {
+        if isAllDay { return "Runs all day." }
+        if isOvernight { return "Ends the next day." }
+        return nil
+    }
+
+    /// Same information squeezed under a day name.
+    var shortSpanNote: String? {
+        if isAllDay { return "all day" }
+        if isOvernight { return "ends next day" }
+        return nil
+    }
 }
 
 private extension TimeOfDay {
@@ -297,6 +340,7 @@ private extension Schedule {
         guard !days.isEmpty else { return "No days selected — reminders are off." }
         let names = days.map { String($0.name.prefix(3)) }.formatted(.list(type: .and))
         guard overrides.isEmpty else { return "Reminders run on \(names), with custom hours on some days." }
+        if hours.isAllDay { return "Reminders run all day on \(names)." }
         return "Reminders run on \(names), \(hours.formatted)."
     }
 }

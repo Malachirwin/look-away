@@ -135,8 +135,9 @@ final class AppModel {
         case .paused(let byUser):
             return byUser ? "Paused" : "Paused (screen locked)"
         case .offSchedule(let until):
-            guard let until else { return "Outside schedule" }
-            return "Outside schedule — back \(Self.formatOpening(until))"
+            // `until` is only nil when no day is switched on.
+            guard let until else { return "No days scheduled" }
+            return "Outside schedule — back \(Self.formatOpening(until, from: clock.now()))"
         }
     }
 
@@ -151,12 +152,18 @@ final class AppModel {
         if icon != iconName { iconName = icon }
     }
 
-    /// "at 9:00 AM" for later today, "Mon at 9:00 AM" beyond that.
-    private static func formatOpening(_ date: Date) -> String {
-        let style = Date.FormatStyle(date: .omitted, time: .shortened)
-        let time = date.formatted(style)
-        if Calendar.current.isDateInToday(date) { return "at \(time)" }
-        return "\(date.formatted(.dateTime.weekday(.abbreviated))) at \(time)"
+    /// "at 9:00 AM" for later today, "Mon at 9:00 AM" within the week, and
+    /// "next Mon at 9:00 AM" when the opening is a full week away, so a
+    /// Monday-only schedule read on Monday evening does not look like today.
+    private static func formatOpening(_ date: Date, from now: Date) -> String {
+        let calendar = Calendar.current
+        let time = date.formatted(date: .omitted, time: .shortened)
+        if calendar.isDate(date, inSameDayAs: now) { return "at \(time)" }
+        let weekday = date.formatted(.dateTime.weekday(.abbreviated))
+        let daysAway = calendar.dateComponents(
+            [.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date)
+        ).day ?? 0
+        return daysAway >= 7 ? "next \(weekday) at \(time)" : "\(weekday) at \(time)"
     }
 
     private static func format(_ interval: TimeInterval) -> String {
