@@ -43,15 +43,23 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             item.target = self
         }
 
+        // macOS 26 indents a menu section only when something in it has a
+        // symbol or a checkmark, so a section without one sits flush and looks
+        // misaligned next to Launch at Login. Every section gets a symbol; the
+        // actions show the icon of the state they lead to.
+        breakNowItem.image = Self.symbol("eye.slash")
+        settingsItem.image = Self.symbol("gearshape")
+        quitItem.image = Self.symbol("power")
+
         menu.items = [
             statusLine,
             .separator(),
             pauseItem,
             breakNowItem,
             .separator(),
-            settingsItem,
             loginItem,
             loginErrorItem,
+            settingsItem,
             .separator(),
             quitItem,
         ]
@@ -77,7 +85,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     private func refreshItems() {
         statusLine.title = model.statusText
+        statusLine.image = Self.symbol(model.iconName)
         pauseItem.title = model.isPaused ? "Resume Reminders" : "Pause Reminders"
+        pauseItem.image = Self.symbol(model.isPaused ? "play.circle" : "pause.circle")
         breakNowItem.isEnabled = !model.isBreaking
         loginItem.state = model.launchAtLoginEnabled ? .on : .off
         loginErrorItem.title = model.launchAtLoginError ?? ""
@@ -93,6 +103,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         } onChange: { [weak self] in
             Task { @MainActor in self?.observeIcon() }
         }
+    }
+
+    private static func symbol(_ name: String) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)
     }
 
     // MARK: Actions

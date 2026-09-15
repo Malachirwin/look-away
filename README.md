@@ -25,7 +25,7 @@ time, look at something 20 feet away for 20 seconds.
 - Sleep or screen lock pauses everything; wake or unlock starts a fresh
   20 minutes.
 - Menu: live "Next break in m:ss", Pause / Resume Reminders, Take a Break Now,
-  Settings, Launch at Login, Quit.
+  Launch at Login, Settings, Quit.
 
 Durations live in `Sources/LookAwayCore/Config.swift`.
 
