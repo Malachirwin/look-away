@@ -60,6 +60,55 @@ struct ScheduleTests {
         #expect(!schedule.allows(date(hour: 21), calendar: calendar))
     }
 
+    // MARK: Daylight saving
+
+    /// New York moved its clocks forward on Sunday 1 April 2001 and back on
+    /// Sunday 28 October 2001.
+    private let newYork: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        return calendar
+    }()
+
+    private func utc(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+    }
+
+    private var springForward: Date { newYork.date(from: DateComponents(year: 2001, month: 4, day: 1, hour: 12))! }
+    private var fallBack: Date { newYork.date(from: DateComponents(year: 2001, month: 10, day: 28, hour: 12))! }
+
+    @Test func nineAMStaysNineAMOnTheDayClocksGoForward() {
+        // 9:00 EDT is 13:00 UTC. Nine hours after midnight would be 10:00 EDT.
+        #expect(TimeOfDay(hour: 9, minute: 0).date(on: springForward, calendar: newYork) == utc(2001, 4, 1, 13))
+    }
+
+    @Test func nineAMStaysNineAMOnTheDayClocksGoBack() {
+        // 9:00 EST is 14:00 UTC. Nine hours after midnight would be 8:00 EST.
+        #expect(TimeOfDay(hour: 9, minute: 0).date(on: fallBack, calendar: newYork) == utc(2001, 10, 28, 14))
+    }
+
+    @Test func aTimeInsideTheSkippedHourRollsForwardToThreeAM() {
+        let resolved = TimeOfDay(hour: 2, minute: 30).date(on: springForward, calendar: newYork)
+        #expect(newYork.component(.hour, from: resolved) == 3)
+    }
+
+    @Test func theWorkdayWindowHoldsOnTransitionDays() {
+        let sundays = Schedule(isEnabled: true, activeDays: [.sunday])
+        #expect(sundays.allows(utc(2001, 4, 1, 13, 30), calendar: newYork))     // 9:30 EDT
+        #expect(!sundays.allows(utc(2001, 4, 1, 12, 30), calendar: newYork))    // 8:30 EDT
+        #expect(sundays.allows(utc(2001, 10, 28, 14, 30), calendar: newYork))   // 9:30 EST
+        #expect(!sundays.allows(utc(2001, 10, 28, 13, 30), calendar: newYork))  // 8:30 EST
+    }
+
+    @Test func aWindowInsideTheSkippedHourIsEmptyNotAllDay() {
+        let schedule = Schedule(
+            isEnabled: true,
+            activeDays: [.sunday],
+            hours: TimeWindow(start: TimeOfDay(hour: 2, minute: 0), end: TimeOfDay(hour: 2, minute: 30))
+        )
+        #expect(!schedule.allows(utc(2001, 4, 1, 16), calendar: newYork)) // noon EDT
+    }
+
     // MARK: Next opening
 
     @Test func nextOpeningIsLaterToday() {

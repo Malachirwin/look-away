@@ -50,9 +50,13 @@ public struct TimeOfDay: Codable, Equatable, Comparable, Sendable {
     /// Minutes since midnight. The comparison and arithmetic basis.
     public var minutesSinceMidnight: Int { hour * 60 + minute }
 
-    /// This time of day on the calendar day containing `day`.
+    /// This time of day on the calendar day containing `day`, by wall clock:
+    /// 9:00 is 9:00 even on the 23- and 25-hour days around a DST change. A
+    /// time the clocks skip over resolves to the first moment after the gap.
     public func date(on day: Date, calendar: Calendar) -> Date {
-        calendar.startOfDay(for: day).addingTimeInterval(TimeInterval(minutesSinceMidnight) * 60)
+        let midnight = calendar.startOfDay(for: day)
+        return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: midnight)
+            ?? midnight.addingTimeInterval(TimeInterval(minutesSinceMidnight) * 60)
     }
 
     public static func < (lhs: TimeOfDay, rhs: TimeOfDay) -> Bool {
@@ -60,8 +64,9 @@ public struct TimeOfDay: Codable, Equatable, Comparable, Sendable {
     }
 }
 
-/// The stretch of a day reminders are allowed to fire in. An `end` at or before
-/// `start` reads as an overnight window that closes the following morning.
+/// The stretch of a day reminders are allowed to fire in. An `end` before
+/// `start` reads as an overnight window that closes the following morning; an
+/// `end` equal to `start` covers the full 24 hours.
 public struct TimeWindow: Codable, Equatable, Sendable {
     public var start: TimeOfDay
     public var end: TimeOfDay
@@ -79,14 +84,16 @@ public struct TimeWindow: Codable, Equatable, Sendable {
 
     public var isOvernight: Bool { end <= start }
 
-    /// The window anchored to the calendar day `day` falls on.
+    /// The window anchored to the calendar day `day` falls on. Decided from the
+    /// wall-clock times, not the resolved dates, so a window that DST squeezes
+    /// to nothing comes out empty rather than a day long.
     public func range(startingOn day: Date, calendar: Calendar) -> Range<Date> {
         let opens = start.date(on: day, calendar: calendar)
         var closes = end.date(on: day, calendar: calendar)
-        if closes <= opens {
+        if isOvernight {
             closes = calendar.date(byAdding: .day, value: 1, to: closes) ?? closes.addingTimeInterval(86_400)
         }
-        return opens..<closes
+        return opens..<max(opens, closes)
     }
 }
 
